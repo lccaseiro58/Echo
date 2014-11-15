@@ -128,14 +128,12 @@ int main(int argc, char *argv[])
 
         Rabbit = malloc(NS_Size*WE_Size*sizeof(float));
         Fox = malloc(NS_Size*WE_Size*sizeof(float));
-                    printMatrix(Rabbit,NS_Size,filepathLRabbit,rank);
-        printMatrix(Fox,NS_Size,filepathLFox,rank);
     }
     MPI_Barrier(my_grid);
 
-    //MPI_Gather(lmRabbit,1,local_matrix,Rabbit,1,matrix,0,my_grid);
+    MPI_Gather(lmRabbit,1,local_matrix,Rabbit,1,matrix,0,my_grid);
     //printf("%s o processo %d\n", s,rank);
-    //MPI_Gather(lmFox,1,local_matrix,Fox,1,matrix,0,my_grid); 
+    MPI_Gather(lmFox,1,local_matrix,Fox,1,matrix,0,my_grid); 
     //printf("%s o processo %d\n", s,rank);
 
     for( k=1; k<=NITER; k++) 
