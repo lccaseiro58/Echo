@@ -23,10 +23,10 @@
 #define NPDIM 2
 
 /* the number of iterations */
-#define NITER 50
+#define NITER 20
 
 /* the frequency at which the populations are surveyed. */
-#define PERIOD 1
+#define PERIOD 2
 
 /* The following 5 constants are used to index nearest neighbours. */
 #define HERE 0
@@ -38,8 +38,8 @@
 /* Global upper bounds for the numbers of land cells in the X and Y dimensions,
  * respectively.
  */
-#define NS_Size 30.00
-#define WE_Size 30.00
+#define NS_Size 300.0
+#define WE_Size 300.0
 
 /* Upper bounds on the size of the first and second dimension of the local
  * arrays that record animal populations.

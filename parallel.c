@@ -5,7 +5,7 @@
 #include "param.h"
 #include "macro.h"
 
-float AlR = 0.2;
+float AlR = -0.2;
 float BtR = 0.6;
 float MuR = 0.01;
 float BtF = 0.6;
@@ -13,10 +13,9 @@ float AlF = -1.8;
 float MuF = 0.02;
 char* s = "Passou";
 
-char* filepathLRabbit = "/home/luis/CPD/PCP/Echo/fileRabbit.txt";
-char* filepathLFox = "/home/luis/CPD/PCP/Echo/fileFox.txt";
-#define TRUE 1
-#define FALSE 0
+char* filepathLRabbit = "/home/luis/git/Echo/fileRabbit.txt";
+char* filepathLFox = "/home/luis/git/Echo/fileFox.txt";
+
 
 int getPos(int i, int j)
 {
@@ -42,6 +41,19 @@ void printMatrix(float* matrix,int line_offset,char* filepath,int rank)
     fclose(f);
 }
 
+void update(float* matrix1,float* matrix2,int line_offset)
+{
+    int i,j,pos;
+    for (i = 0; i < line_offset; i++)
+    {
+        for (j = 0; j < WE_Size; j++)
+        {
+            pos=getPos(i,j);
+            matrix1[pos] = matrix2[pos];
+        }
+    }
+}
+
 int SetLand ( float *Rabbit,float *Fox, int offset,int my_rank,int comm_sz);
 
 int nonCriticalLines(float* Rabbit,float* Fox,float* TRabbit,float* TFox,int offset);
@@ -49,9 +61,9 @@ int nonCriticalLines(float* Rabbit,float* Fox,float* TRabbit,float* TFox,int off
 int criticalLines(float* lineUpR,float* lineDownR,float* lineUpF,float* lineDownF,
     float* Rabbit,float* Fox,float* TRabbit,float* TFox, int my_rank, int comm_sz,int offset);
 
-int FillBorder(float  *Animal);
+int FillBorder(float  *Animal,int line_offset, float* lineUp, float* lineDown, int rank, int comm_size);
 
-int GetPopulation(float *Animal,float *tcount,int offset);
+int GetPopulation(float *Animal,float *tcount,int offset,int rank, int comm_size);
 
 
 
@@ -62,7 +74,7 @@ int main(int argc, char *argv[])
     int rank,comm_size;
     MPI_Comm my_grid;
     int dim[2],period[2],reorder;
-    int up,down,right,left,line_offset,err=0,k,j;
+    int up,down,right,left,line_offset,err=0,k,j,pos;
     float nbrab,nbfox,totalrab,totalfox;
     MPI_Init(&argc, &argv);
     double MPI_Wtime(void);
@@ -79,28 +91,16 @@ int main(int argc, char *argv[])
     period[1]=TRUE;
     reorder=FALSE;
     MPI_Cart_create(MPI_COMM_WORLD,2,dim,period,reorder,&my_grid);
-    /*
-    if(rank==8)
-    {
-        MPI_Cart_shift(my_grid,0,1,&left,&right);
-        MPI_Cart_shift(my_grid,1,1,&up,&down);
-        printf("P:%d My neighbors are r: %d d:%d 1:%d u:%d\n",rank,right,down,left,up);
-    }
-    */
+
     if(rank == comm_size -1)
     {
         line_offset = line_offset + (int)NS_Size % comm_size;
     }
+
     //Criação de dados derivados
     MPI_Datatype row;
     MPI_Type_contiguous((WE_Size), MPI_FLOAT, &row);
     MPI_Type_commit(&row);
-    MPI_Datatype matrix;
-    MPI_Type_contiguous(NS_Size*WE_Size, MPI_FLOAT, &matrix);
-    MPI_Type_commit(&matrix);
-    MPI_Datatype local_matrix;
-    MPI_Type_contiguous(line_offset, row, &local_matrix);
-    MPI_Type_commit(&local_matrix);
 
     float* sendUp_rowR = malloc(WE_Size*sizeof(float));
     float* sendDown_rowR = malloc(WE_Size*sizeof(float));
@@ -120,21 +120,14 @@ int main(int argc, char *argv[])
     float* lmTRabbit = malloc(line_offset*WE_Size*sizeof(float));
     float* lmTFox = malloc(line_offset*WE_Size*sizeof(float));
     
-    float *Rabbit,*Fox;
 
     err = SetLand(lmRabbit,lmFox,line_offset,rank,comm_size);
-    if(rank == 0)
+
+    if(rank == comm_size - 5)
     {
-
-        Rabbit = malloc(NS_Size*WE_Size*sizeof(float));
-        Fox = malloc(NS_Size*WE_Size*sizeof(float));
+        printMatrix(lmRabbit,line_offset,filepathLRabbit,rank);
+        printMatrix(lmFox,line_offset,filepathLFox,rank);
     }
-    MPI_Barrier(my_grid);
-
-    MPI_Gather(lmRabbit,1,local_matrix,Rabbit,1,matrix,0,my_grid);
-    //printf("%s o processo %d\n", s,rank);
-    MPI_Gather(lmFox,1,local_matrix,Fox,1,matrix,0,my_grid); 
-    //printf("%s o processo %d\n", s,rank);
 
     for( k=1; k<=NITER; k++) 
     {
@@ -144,13 +137,60 @@ int main(int argc, char *argv[])
         totalrab=0;
         totalfox=0;
 
-        if(rank==0)
+        if(rank == 0)
         {
-            //err = FillBorder(Rabbit); 
-            //err = FillBorder(Fox);
+            for(j=0; j <WE_Size;j++)
+            {
+                sendUp_rowR[j] = lmRabbit[getPos(1,j)];
+            }
+
+            MPI_Isend(sendUp_rowR, 1, row, comm_size - 1, 0, my_grid,reqR);
+
+            MPI_Recv(recvDown_rowR,1, row, comm_size - 1, 0, my_grid, statusR);
+
+            for(j=0; j <WE_Size;j++)
+            {
+                sendUp_rowF[j] = lmFox[getPos(1,j)];
+            }
+
+            MPI_Isend(sendUp_rowF, 1, row, comm_size - 1, 0, my_grid,reqF);
+
+            MPI_Recv(recvDown_rowF,1, row, comm_size - 1, 0, my_grid, statusF);
+
+            MPI_Wait(reqR,statusR);
+            MPI_Wait(reqF,statusF);
+
         }
-        MPI_Scatter(Rabbit,1,local_matrix,lmRabbit,1,local_matrix,0,my_grid);
-        MPI_Scatter(Fox,1,local_matrix,lmFox,1,local_matrix,0,my_grid);
+
+        if(rank == comm_size-1)
+        {
+            for(j=0; j <WE_Size;j++)
+            {
+                sendDown_rowR[j] = lmRabbit[getPos(line_offset-1,j)];
+            }
+
+            MPI_Isend(sendDown_rowR, 1, row, 0, 0, my_grid,reqR);
+
+            MPI_Recv(recvUp_rowR,1, row, 0, 0, my_grid, statusR);
+
+            for(j=0; j <WE_Size;j++)
+            {
+                sendDown_rowF[j] = lmFox[getPos(line_offset-1,j)];
+            }
+
+            MPI_Isend(sendDown_rowF, 1, row, 0, 0, my_grid,reqF);
+
+            MPI_Recv(recvUp_rowF,1, row, 0, 0, my_grid, statusF);
+
+            MPI_Wait(reqR,statusR);
+            MPI_Wait(reqF,statusF);                        
+        }
+
+
+        err = FillBorder(lmRabbit,line_offset,recvUp_rowR,recvDown_rowR,rank,comm_size); 
+        err = FillBorder(lmFox,line_offset,recvUp_rowF,recvDown_rowF,rank,comm_size);
+
+
         MPI_Cart_shift(my_grid,1,1,&up,&down);
 
         if (up == -1)
@@ -162,15 +202,12 @@ int main(int argc, char *argv[])
             down = MPI_PROC_NULL;
         }
 
-        //err = nonCriticalLines(lmRabbit,lmFox,lmTRabbit,lmTFox,line_offset);
-        int pos;
-
         //////UP Lines
 
         for(j = 0; j < (WE_Size); j++)
         {
             pos=getPos(0,j);
-            lmRabbit[pos] = sendUp_rowR[j];
+            sendUp_rowR[j] = lmRabbit[pos];
         }
 
         MPI_Isend(sendUp_rowR, 1, row, up, 0, my_grid,reqR);
@@ -181,7 +218,7 @@ int main(int argc, char *argv[])
         for(j = 0; j < (WE_Size); j++)
         {
             pos=getPos(0,j);
-            lmFox[pos] = sendUp_rowF[j];
+            sendUp_rowF[j] = lmFox[pos];
         }
         MPI_Isend(sendUp_rowF, 1, row, up, 0, my_grid,reqF);
 
@@ -192,7 +229,7 @@ int main(int argc, char *argv[])
         for(j = 0; j < (WE_Size); j++)
         {
             pos=getPos(line_offset-1,j);
-            lmRabbit[pos] = sendDown_rowR[j];
+            sendDown_rowR[j] = lmRabbit[pos];
         }
         MPI_Isend(sendDown_rowR, 1, row, down, 0, my_grid,reqR);
 
@@ -201,30 +238,31 @@ int main(int argc, char *argv[])
         for(j = 0; j < (WE_Size); j++)
         {
             pos=getPos(line_offset-1,j);
-            lmRabbit[pos] = sendDown_rowF[j];
+            sendDown_rowF[j] = lmRabbit[pos];
         }
         MPI_Isend(sendDown_rowF, 1, row, down, 0, my_grid,reqF);
 
         MPI_Recv(recvUp_rowF,1, row, up, 0, my_grid, statusF);
 
+        err = nonCriticalLines(lmRabbit,lmFox,lmTRabbit,lmTFox,line_offset);
 
         MPI_Wait(reqR,statusR);
         MPI_Wait(reqF,statusF);
 
-        //err = criticalLines(recvUp_rowR,recvDown_rowR,recvUp_rowF,recvDown_rowF,lmRabbit,lmFox,lmTRabbit,lmTFox,rank,comm_size,line_offset);           
+
+        err = criticalLines(recvUp_rowR,recvDown_rowR,recvUp_rowF,recvDown_rowF,lmRabbit,lmFox,lmTRabbit,lmTFox,rank,comm_size,line_offset);           
 
         if( (k % PERIOD) == 1 )
         {
-            err = GetPopulation(lmTRabbit,&nbrab,line_offset); 
-            err = GetPopulation(lmTFox,&nbfox,line_offset);
+            err = GetPopulation(lmTRabbit,&nbrab,line_offset,rank,comm_size); 
+            err = GetPopulation(lmTFox,&nbfox,line_offset,rank,comm_size);
             MPI_Reduce(&nbrab,&totalrab,1,MPI_FLOAT,MPI_SUM,0,my_grid);
             MPI_Reduce(&nbfox,&totalfox,1,MPI_FLOAT,MPI_SUM,0,my_grid);
-            printf("In the year %d, the number of rabbits is %f and the number of foxes is %f. \n", k,totalrab,totalfox);
+            if(rank == 0)
+                printf("In the year %d, the number of rabbits is %d and the number of foxes is %d. \n", k,(int)totalrab,(int)totalfox);
         }
-        MPI_Barrier(my_grid);
-        MPI_Gather(lmRabbit,1,local_matrix,Rabbit,1,matrix,0,my_grid);
-        MPI_Gather(lmFox,1,local_matrix,Fox,1,matrix,0,my_grid);
-        printf("%s o processo %d\n", s,rank);
+        update(lmRabbit,lmTRabbit,line_offset);
+        update(lmFox,lmTFox,line_offset);
 
     }
     if(rank==0)
@@ -241,7 +279,6 @@ int SetLand ( float *Rabbit,float *Fox, int offset,int my_rank,int comm_sz)
 {
     int err,pos;
     int gi, gj;
-
     err = 1;
     if(my_rank==0)
     {
@@ -290,7 +327,7 @@ int SetLand ( float *Rabbit,float *Fox, int offset,int my_rank,int comm_sz)
                     8.0*(gj/(float)(WE_Size)-0.5)*(gj/(float)(WE_Size)-0.5);
             }
         }
-    }        
+    }
     return(err);
 }
 
@@ -306,16 +343,25 @@ int nonCriticalLines(float* Rabbit,float* Fox,float* TRabbit,float* TFox,int off
         {
             pos=getPos(gi,gj);
             TRabbit[pos] = (1.0+AlR-4.0*MuR)*Rabbit[pos] +
-                                    BtR*Fox[pos] +
-                                    MuR*(Rabbit[pos-1]+Rabbit[pos+1]+
-                                    Rabbit[getPos(gi-1,gj)]+Rabbit[getPos(gi+1,gj)]);
+                            BtR*Fox[pos] +
+                            MuR*(Rabbit[pos-1]+Rabbit[pos+1]+Rabbit[getPos(gi-1,gj)]+Rabbit[getPos(gi+1,gj)]);
 
             TFox[pos] = AlF*Rabbit[pos] +
-                                 (1.0+BtF-4.0*MuF)*Fox[pos] +
-                                 MuF*(Fox[pos-1]+Fox[pos+1]+
-                                 Fox[getPos(gi-1,gj)]+Fox[getPos(gi+1,gj)]);
+                         (1.0+BtF-4.0*MuF)*Fox[pos] +
+                         MuF*(Fox[pos-1]+Fox[pos+1]+Fox[getPos(gi-1,gj)]+Fox[getPos(gi+1,gj)]);
         }
     }
+
+    for( gi=1; gi < offset-1; gi++)
+    {
+        for(gj=1; gj<=WE_Size-3; gj++ )
+        {
+            pos=getPos(gi,gj);
+            TRabbit[pos] = MAX( 0.0, TRabbit[pos]);
+            TFox[pos] = MAX( 0.0, TFox[pos]);
+        }
+    }
+
     return (err);
 }
 
@@ -338,6 +384,9 @@ int criticalLines(float* lineUpR,float* lineDownR,float* lineUpF,float* lineDown
                                 (1.0+BtF-4.0*MuF) * Fox[pos] +
                                 MuF * (Fox[pos-1] + Fox[pos+1] +
                                 Fox[getPos(offset-2,gj)] + lineDownF[gj]);
+            TRabbit[pos] = MAX( 0.0, TRabbit[pos]);
+            TFox[pos] = MAX( 0.0, TFox[pos]);
+
         }
     }
 
@@ -355,6 +404,9 @@ int criticalLines(float* lineUpR,float* lineDownR,float* lineUpF,float* lineDown
                                     (1.0+BtF-4.0*MuF)*Fox[pos] +
                                     MuF*(Fox[pos-1]+Fox[pos+1]+
                                     lineUpF[gj]+Fox[getPos(1,gj)]);
+            TRabbit[pos] = MAX( 0.0, TRabbit[pos]);
+            TFox[pos] = MAX( 0.0, TFox[pos]);
+
         }
     }
     else
@@ -371,47 +423,60 @@ int criticalLines(float* lineUpR,float* lineDownR,float* lineUpF,float* lineDown
                                 (1.0+BtF-4.0*MuF)*Fox[pos] +
                                 MuF*(Fox[pos-1]+Fox[pos+1]+
                                 lineUpF[gj]+Fox[getPos(1,gj)]);
+
+            TRabbit[pos] = MAX( 0.0, TRabbit[pos]);
+            TFox[pos] = MAX( 0.0, TFox[pos]);
         }
         for( gj=1; gj<=WE_Size-2; gj++)
         {
             pos=getPos(offset-1,gj);
-            TRabbit[pos] = (1.0+AlR-4.0*MuR)*Rabbit[pos] +
-                                BtR*Fox[pos] +
+            TRabbit[pos] = (1.0+AlR-4.0*MuR)*Rabbit[pos] + BtR*Fox[pos] +
                                 MuR*(Rabbit[pos-1] + Rabbit[pos+1]
                                 + Rabbit[getPos(offset-2,gj)]+lineDownR[gj]);
 
             TFox[pos] = AlF*Rabbit[pos] +
                                 (1.0+BtF-4.0*MuF)*Fox[pos] +
-                                MuF*(Fox[pos-1]+Fox[gj*pos+1]+
+                                MuF*(Fox[pos-1]+Fox[pos+1]+
                                 Fox[getPos(offset-2,gj)]+lineDownF[gj]);
-        }                
+            TRabbit[pos] = MAX( 0.0, TRabbit[pos]);
+            TFox[pos] = MAX( 0.0, TFox[pos]);                    
+        }               
     }
     return(err);
 }
 
 
-int FillBorder(float  *Animal)
+int FillBorder(float  *Animal,int line_offset, float* lineUp, float* lineDown, int rank, int comm_size)
 {
     int        err;
     int        i, j;
     err = 0;
 
-    for( i=0; i <=NS_Size-2; i++) 
+    if(rank == 0)
+    {
+
+        for( j=0; j<=WE_Size-2; j++) 
+        {
+            Animal[getPos(0,j)] = lineUp[j];
+        }
+    }
+    if (rank +1 == comm_size)
+    {
+        for( j=0; j<=WE_Size-2; j++) 
+        {
+            Animal[getPos(line_offset-1,j)] = lineDown[j];
+        }
+    }    
+    for( i=0; i < line_offset; i++) 
     {
         Animal[getPos(i,0)] = Animal[getPos(i,WE_Size-2)];
         Animal[getPos(i,WE_Size-1)] = Animal[getPos(i,1)];
-    }
-
-    for( j=0; j<=WE_Size-2; j++) 
-    {
-        Animal[getPos(0,j)] = Animal[getPos(NS_Size-2,j)];
-        Animal[getPos(NS_Size-1,j)] = Animal[getPos(1,j)];
     }
     return(err);
 }
 
 
-int GetPopulation(float *Animal,float *tcount,int offset)
+int GetPopulation(float *Animal,float *tcount,int offset,int rank,int comm_size)
 {
     int   err;
     int   i, j;
@@ -419,10 +484,24 @@ int GetPopulation(float *Animal,float *tcount,int offset)
 
     err = 0;
     p = 0.0;
-    for( i=1; i < offset; i++)
-      for( j=1;j<=WE_Size-2; j++)
-            p = p + Animal[getPos(i,j)];
-
+    if(rank == 0)
+    {
+        for( i=1; i < offset; i++)
+            for( j=1;j<=WE_Size-2; j++)
+                p = p + Animal[getPos(i,j)];
+    }
+    if(rank == comm_size-1)
+    {
+        for( i=0; i < offset -1; i++)
+            for( j=1;j<=WE_Size-2; j++)
+                p = p + Animal[getPos(i,j)];
+    }
+    else
+    {
+        for( i=0; i < offset; i++)
+            for( j=1;j<=WE_Size-2; j++)
+                p = p + Animal[getPos(i,j)];
+    }
     *tcount = p;
     return(err);
 }
