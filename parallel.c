@@ -265,6 +265,19 @@ int main(int argc, char *argv[])
         update(lmFox,lmTFox,line_offset);
 
     }
+    free(sendUp_rowR);
+    free(sendDown_rowR);
+    free(sendUp_rowF);
+    free(sendDown_rowF);
+    free(recvUp_rowR);
+    free(recvDown_rowR);
+    free(recvUp_rowF);
+    free(recvDown_rowF);
+    free(lmRabbit);
+    free(lmFox);
+    free(lmTRabbit);
+    free(lmTFox);
+        
     if(rank==0)
     {
         finish=MPI_Wtime();
