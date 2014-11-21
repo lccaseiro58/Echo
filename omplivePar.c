@@ -155,7 +155,7 @@ int main(int argc, char *argv[])
     int thread_count = strtol(argv[1],NULL,10);
     int n;
     int global_result=0;
-    char* filepath = "/home/luis/CPD/PCP/OpenMP/live/matrix.txt";
+    char* filepath = "/home/luis/git/Echo/matrix.txt";
     matrix old,new;
     initMatrix(&old,thread_count);
     initMatrix(&new,thread_count);
