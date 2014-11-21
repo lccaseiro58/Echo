@@ -11,10 +11,10 @@ float MuR = 0.01;
 float BtF = 0.6;
 float AlF = -1.8;
 float MuF = 0.02;
-char* s = "Passou";
+//char* s = "Passou";
 
-char* filepathLRabbit = "/home/luis/git/Echo/fileRabbit.txt";
-char* filepathLFox = "/home/luis/git/Echo/fileFox.txt";
+//char* filepathLRabbit = "/home/luis/git/Echo/fileRabbit.txt";
+//char* filepathLFox = "/home/luis/git/Echo/fileFox.txt";
 
 
 int getPos(int i, int j)
@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
     int rank,comm_size;
     MPI_Comm my_grid;
     int dim[2],period[2],reorder;
-    int up,down,right,left,line_offset,err=0,k,j,pos;
+    int up,down,line_offset,err=0,k,j,pos;
     float nbrab,nbfox,totalrab,totalfox;
     MPI_Init(&argc, &argv);
     double MPI_Wtime(void);
@@ -94,7 +94,7 @@ int main(int argc, char *argv[])
 
     if(rank == comm_size -1)
     {
-        line_offset = line_offset + (int)NS_Size % comm_size;
+        line_offset = line_offset + NS_Size % comm_size;
     }
 
     //Criação de dados derivados
@@ -122,12 +122,6 @@ int main(int argc, char *argv[])
     
 
     err = SetLand(lmRabbit,lmFox,line_offset,rank,comm_size);
-
-    if(rank == comm_size - 5)
-    {
-        printMatrix(lmRabbit,line_offset,filepathLRabbit,rank);
-        printMatrix(lmFox,line_offset,filepathLFox,rank);
-    }
 
     for( k=1; k<=NITER; k++) 
     {
@@ -252,14 +246,14 @@ int main(int argc, char *argv[])
 
         err = criticalLines(recvUp_rowR,recvDown_rowR,recvUp_rowF,recvDown_rowF,lmRabbit,lmFox,lmTRabbit,lmTFox,rank,comm_size,line_offset);           
 
-        if( (k % PERIOD) == 1 )
+        if( !(k % PERIOD) )
         {
             err = GetPopulation(lmTRabbit,&nbrab,line_offset,rank,comm_size); 
             err = GetPopulation(lmTFox,&nbfox,line_offset,rank,comm_size);
             MPI_Reduce(&nbrab,&totalrab,1,MPI_FLOAT,MPI_SUM,0,my_grid);
             MPI_Reduce(&nbfox,&totalfox,1,MPI_FLOAT,MPI_SUM,0,my_grid);
-            if(rank == 0)
-                printf("In the year %d, the number of rabbits is %d and the number of foxes is %d. \n", k,(int)totalrab,(int)totalfox);
+            //if(rank == 0)
+                //printf("In the year %d, the number of rabbits is %d and the number of foxes is %d. \n", k,(int)totalrab,(int)totalfox);
         }
         update(lmRabbit,lmTRabbit,line_offset);
         update(lmFox,lmTFox,line_offset);
